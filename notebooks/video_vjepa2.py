@@ -307,14 +307,20 @@ print(ratios.round(4).to_string(index=False))
 # faithful.
 
 # %%
-def project_volume(vol: np.ndarray, op: str = "mean") -> dict[str, np.ndarray]:
-    """3-D `(gt, gy, gx)` volume → three 2-D projections.
+def project_volume(vol: np.ndarray, op: str) -> dict[str, np.ndarray]:
+    """3-D `(gt, gy, gx)` volume → three 2-D projections via ``op``.
 
     Returns ``{"t": (gy, gx), "y": (gt, gx), "x": (gt, gy)}``.
-    `op` is "mean" or "max"; max is the more useful one for sparse
-    fields like |∇H|.
+    `op` is one of "min" / "mean" / "max":
+      - max: surfaces sparse high voxels (right tail);
+      - min: surfaces sparse low voxels — entropy outliers in the
+             ViT-feature literature live in this tail;
+      - mean: bulk DC level — useful as a sanity reference.
     """
-    fn = vol.mean if op == "mean" else vol.max
+    fns = {"min": vol.min, "mean": vol.mean, "max": vol.max}
+    if op not in fns:
+        raise ValueError(f"unsupported projection op: {op}")
+    fn = fns[op]
     return {
         "t": fn(axis=0),                           # collapse t → (gy, gx)
         "y": fn(axis=1),                           # collapse y → (gt, gx)
@@ -324,47 +330,62 @@ def project_volume(vol: np.ndarray, op: str = "mean") -> dict[str, np.ndarray]:
 
 def plot_projection_grid(
     vols_named: list[tuple[str, np.ndarray]], out_path: Path,
-    layers_of_interest: list[int], title: str, op: str = "mean",
+    layers_of_interest: list[int], title: str,
     cmap: str = "viridis",
+    ops: tuple[str, str, str] = ("min", "mean", "max"),
 ) -> None:
-    """One row per (clip, layer) pair; 3 columns = (t, y, x) projections."""
+    """For each (clip, layer): 3 axes × 3 ops = 9 panels in one row block.
+
+    Layout: rows = clip × layer, cols grouped as 3 axes × 3 ops
+    (so 9 cols total). Per-(clip, layer) row block lets the eye scan
+    the same physical layer across t/y/x projections under all three
+    projection operators side by side.
+    """
     n_clips = len(vols_named)
     n_L = len(layers_of_interest)
+    n_axes = 3
+    n_ops = len(ops)
+    n_rows = n_clips * n_L
+    n_cols = n_axes * n_ops
     fig, axes = plt.subplots(
-        n_clips * n_L, 3, figsize=(11, 3.0 * n_clips * n_L),
+        n_rows, n_cols, figsize=(2.0 * n_cols + 0.5, 2.4 * n_rows),
         squeeze=False,
     )
+    axis_labels = ("t", "y", "x")
     for ci, (name, vol) in enumerate(vols_named):
         for li, L in enumerate(layers_of_interest):
             row = ci * n_L + li
             slab = vol[L - 1]                       # (gt, gy, gx)
-            projs = project_volume(slab, op=op)
-            for ax, axis_label in zip(axes[row], ["t", "y", "x"]):
-                im = ax.imshow(projs[axis_label], cmap=cmap, aspect="auto")
-                ax.set_title(f"{name}  L={L}  {op}-proj along {axis_label}",
-                             fontsize=9)
-                ax.set_xticks([]); ax.set_yticks([])
-                fig.colorbar(im, ax=ax, fraction=0.04, pad=0.02)
+            for ai, axlabel in enumerate(axis_labels):
+                for oi, op in enumerate(ops):
+                    proj = project_volume(slab, op=op)[axlabel]
+                    col = ai * n_ops + oi
+                    ax = axes[row, col]
+                    im = ax.imshow(proj, cmap=cmap, aspect="auto")
+                    ax.set_xticks([]); ax.set_yticks([])
+                    if row == 0:
+                        ax.set_title(f"axis={axlabel}\n{op}", fontsize=8)
+                    if col == 0:
+                        ax.set_ylabel(f"{name}\nL={L}", fontsize=9)
+                    fig.colorbar(im, ax=ax, fraction=0.045, pad=0.02)
     fig.suptitle(title, y=1.0)
     fig.tight_layout()
     fig.savefig(out_path, dpi=140, bbox_inches="tight")
     plt.close(fig)
 
 
-# H projections: mean over the collapsed axis.
 # Pick layers spanning the depth: shallow / mid / late.
 LAYERS_INTEREST = [4, 12, 24]
 plot_projection_grid(
     [("synth", H_synth), ("real", H_real), ("const", H_const)],
     out_path=RESULTS / "H_projections.png",
-    layers_of_interest=LAYERS_INTEREST, op="mean",
-    title=f"{ARCH} — mean-projections of per-layer H volume "
-          f"(rows = clip × layer, cols = (t, y, x) projections)",
+    layers_of_interest=LAYERS_INTEREST,
+    title=f"{ARCH} — per-layer H volume projections "
+          f"(min / mean / max along each axis)",
     cmap="viridis",
 )
 print(f"saved {RESULTS / 'H_projections.png'}")
 
-# |∇H| projections: max-project so sparse outlier tubes survive.
 def gradmag_volume(vol: np.ndarray) -> np.ndarray:
     """Per-layer |∇₃H| volume of shape (n_layers, gt, gy, gx)."""
     n_L = vol.shape[0]
@@ -382,10 +403,9 @@ grad_const = gradmag_volume(H_const)
 plot_projection_grid(
     [("synth", grad_synth), ("real", grad_real), ("const", grad_const)],
     out_path=RESULTS / "gradH_projections.png",
-    layers_of_interest=LAYERS_INTEREST, op="max",
-    title=f"{ARCH} — max-projections of per-layer |∇₃H| volume "
-          f"(rows = clip × layer, cols = (t, y, x); look for diagonals "
-          f"in 'y-proj' for synth's translating blob)",
+    layers_of_interest=LAYERS_INTEREST,
+    title=f"{ARCH} — per-layer |∇₃H| volume projections "
+          f"(min / mean / max; look for diagonals in y-axis cols for synth)",
     cmap="inferno",
 )
 print(f"saved {RESULTS / 'gradH_projections.png'}")
