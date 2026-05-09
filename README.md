@@ -1,26 +1,68 @@
 # eris
 
-Per-patch differential entropy at each ViT-B/16 layer treated as a 2D
-scalar field on the 14×14 patch grid, then visualised with the tools of
-fluid dynamics: gradient, streamlines, Laplacian, inter-layer ΔH.
+Per-patch differential entropy on standardised residual streams of ViT-style
+models, treated as a 2-D (or 3-D in video) scalar field on the patch grid.
 
-The question: do the per-layer entropy fields show Schlieren / wind-tunnel
-structure (boundaries, wakes, recirculation, shear) across depth, or is
-the field noise?
+**Headline finding so far.** Across `vit-base-patch16-224`,
+`vit-large-patch16-224`, `dinov2-base`, and `clip-vit-base-patch16` (all
+loaded ungated from HuggingFace, no fine-tuning), per-image transition
+layer = `argmax_L (ΔH-std)` is rock-stable (IQR = 0 across 200 tiny-imagenet
+val images per arch), the transition is sharp (peak/median 4×–21×), and its
+location is gated by **training objective** rather than universal: supervised
+classification ≪ self-supervised / contrastive in `L_trans / L_max`. Per-
+patch entropy beats per-patch L2 norm, attention-rollout entropy, and
+random-init residual entropy at p < 0.001 on outlier-localisation accuracy.
+On video the transition layer is frame-stationary (std = 0 across all
+frames in both ViT-B/16 and DINO-v2), but volumetric outlier-tube tracking
+on a synthetic translating blob fails for ViT-B/16 due to register-token
+edge dominance (Darcet et al. 2024).
 
-## Run
+See `results/summary.md` for the full read-out and `results/` for figures
+and tensors.
+
+## Reproduce
 
 ```bash
 uv sync
-uv run jupytext --sync notebooks/*.py
-uv run jupyter nbconvert --to notebook --execute --inplace \
-  notebooks/synth_check.ipynb
-# Then for each image:
-IMAGE_PATH=images/single_object.jpg \
-  uv run jupyter nbconvert --to notebook --execute --inplace \
-  notebooks/viz_one.ipynb
-uv run jupyter nbconvert --to notebook --execute --inplace \
-  notebooks/cross_image.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/synth_check.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/cross_arch.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/video_frames.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/video_volume.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/video_volume_bundle.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/baselines.ipynb
+uv run jupyter nbconvert --to notebook --execute --inplace notebooks/estimator_robustness.ipynb
 ```
 
-Outputs land under `results/`. See `results/summary.md` for the read-out.
+Total compute < 30 min on a single 4090; mostly forwards (no fine-tuning).
+
+## Library
+
+`src/eris/` exports:
+
+```python
+from eris.extract import extract_entropy_stack, load_model
+from eris.estimators import vasicek_entropy, knn_entropy, kde_entropy
+from eris.fields import (gradient_2d, laplacian_2d, depth_derivatives,
+                         gradient_3d, laplacian_3d,
+                         transition_layer, per_layer_stats)
+from eris.video import synthesise_translating_blob, load_real_video
+from eris.volumetric import extract_outlier_tubes, render_streamtubes_html
+from eris.baselines import (l2_norm_field, attention_rollout_field,
+                            random_init_entropy_field)
+```
+
+`load_model` registry covers `vit_b16`, `vit_l16`, `dinov2_b`, `clip_b16`
+out of the box; arch-specific CLS / patch-grid / forward conventions are
+hidden behind the unified `extract_entropy_stack` API.
+
+## What this is + isn't
+
+- **It IS:** a clean depth-wise structural finding in trained-ViT residual
+  streams; the visualisation pipeline that surfaced it; a methodological
+  comparison against simpler per-patch baselines.
+- **It IS NOT:** a new mechanism, a free-energy derivation, or a causal
+  probe. The phenomenon (sparse non-Gaussian "outlier features") is in
+  the literature (Kovaleva 2021, Dettmers 2022, Sun 2024). What this work
+  adds is the **spatial dimension** — outliers live on a 2-D patch grid
+  and emerge in a single-layer phase transition whose timing is gated by
+  training objective.
