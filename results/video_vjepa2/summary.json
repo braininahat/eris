@@ -1,0 +1,44 @@
+{
+  "arch": "vjepa2_l",
+  "model": "facebook/vjepa2-vitl-fpc64-256",
+  "n_layers": 24,
+  "grid_size_3d": [
+    32,
+    16,
+    16
+  ],
+  "transition_per_video": [
+    {
+      "video": "synth",
+      "L_trans": 24,
+      "peak_dHstd": 0.0834612250328064,
+      "median_dHstd": 0.007933169603347778,
+      "peak_over_median": 10.520539608479561
+    },
+    {
+      "video": "real",
+      "L_trans": 24,
+      "peak_dHstd": 0.0562511682510376,
+      "median_dHstd": 0.010866306722164154,
+      "peak_over_median": 5.176659346114474
+    },
+    {
+      "video": "const",
+      "L_trans": 24,
+      "peak_dHstd": 0.04320434108376503,
+      "median_dHstd": 0.012211799621582031,
+      "peak_over_median": 3.537917622510738
+    }
+  ],
+  "best_synth_tube_iou": {
+    "L": 2,
+    "iou_largest_vs_gt": 0.23648648648648649,
+    "edge_frac_at_best": 0.11463414634146342,
+    "iou_topmask_vs_gt_at_best": 0.22580645161290322
+  },
+  "step_b_reference": {
+    "vit_b16_synth_best_iou_largest": 0.0,
+    "dinov2_synth_best_iou_largest_at_L6": 0.299,
+    "vit_b16_synth_edge_frac_top5pct": "0.60\u20130.80"
+  }
+}

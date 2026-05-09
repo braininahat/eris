@@ -149,6 +149,83 @@ expected, since collapsing 768-D → 1-D loses the geometry. The
 finding above lives in the raw residual stream, not its scalar
 projection.)
 
+### 6. V-JEPA 2 (native-3D video ViT) injects temporal positional structure that overwhelms motion content in mid-network residuals
+
+`facebook/vjepa2-vitl-fpc64-256` — 24-block self-supervised video ViT
+(326M params, 64 frames × 256², tubelet=2 → 32×16×16 token grid). Three
+clips, all 64 frames at 256²:
+
+- **synth**: translating Gaussian blob (same trajectory as Step B).
+- **real**: Big Buck Bunny, same source clip as Step B.
+- **const**: 64 identical copies of `real[32]` — a "constant-content"
+  control. If V-JEPA 2 only encodes content, the resulting (gt, gy,
+  gx) entropy volume should have ~zero variance along `t`.
+
+**Phase signature differs qualitatively from supervised / SSL still-
+image ViTs.** Per-layer H_mean rises monotonically (does not drop);
+H_std and mean |∇₃H| form a *broad arch* peaking at L=11-17, not a
+sharp single-layer spike. Per-clip transition layers (argmax ΔH-std)
+all sit at L=24 — the final-layer-norm bump — with peak/median ratios
+3.5–10.5×, lower than supervised ViTs' 4–21× spike sharpness. So
+V-JEPA 2 has no L4→L5-style phase transition in the same sense.
+
+**The const clip exposes V-JEPA 2's temporal positional encoding.**
+Define `Δt-std(L) = std over tubelet t of spatial-mean H[L, t, :, :]`.
+Predictions:
+- if V-JEPA 2 is content-faithful, const should have Δt-std ≈ 0 for
+  all layers;
+- synth (slow translation) should have moderate Δt-std;
+- real (rich scene dynamics) should have largest Δt-std.
+
+Actual:
+- `const` has the *highest* Δt-std at every mid-network layer, peaking
+  at 0.10 around L=15; only matches the others' near-zero values at
+  L=1-2 and L=24.
+- `synth` has the *lowest* Δt-std for L=1-21.
+- `real` sits between, near 0.03 across all layers.
+
+V-JEPA 2 invents temporal structure on a static-content input and
+that injected structure is *larger* than the content-driven motion
+variance at every mid-network layer. The per-tubelet transition layer
+on `const` is bimodal between L≈6 and L=24 with std=9.57 across t
+(synth std=0, real std=4.7).
+
+**Volumetric outlier-tube tracking on the synth blob:** unlike
+ViT-B/16 (Step B — bundle IoU = 0, 60-80 % of top-5 % |∇H| voxels on
+frame edges), V-JEPA 2 tracks the blob trajectory **at shallow layers
+only**. Largest connected component vs ground-truth tubelet mask:
+
+| layer | IoU largest CC | edge fraction (chance = 0.25) | n components |
+|---|---|---|---|
+| 1 | 0.156 | 0.108 | 27 |
+| **2** | **0.236** | **0.115** | 22 |
+| 3 | 0.197 | 0.094 | 19 |
+| 4 | 0.066 | 0.330 | 98 |
+| 7 | 0.000 | 0.679 | 174 |
+| 15 | 0.000 | 0.918 | 159 |
+| 24 | 0.000 | 0.937 | 105 |
+
+L=2 IoU = 0.24 vs ViT-B/16's 0.00 and DINO-v2's 0.30 (at L=6). The
+*content* signal in V-JEPA 2 lives in the early embedding layers,
+before the temporal-PE pattern contaminates the gradient field. By
+L=4 onwards, ≥0.5–0.9 of high-|∇H| voxels sit on the (t, y, x) volume
+boundary — V-JEPA 2 develops its own register-token-like artefacts,
+just at deeper layers than ViT-B/16.
+
+**Read.** Native-3D pretraining doesn't escape the artefact; it shifts
+*where* in depth the artefact dominates. The volumetric framing is
+viable in a narrow window (L=1-3 for V-JEPA 2 ViT-L) — at the cost
+of giving up the deep-layer outlier-feature mechanism that drives the
+still-image phase transition.
+
+Figures: `video_vjepa2/{phase_curves.png,
+const_input_temporal_variance.png, layer_tubelet_grid.png,
+transition_per_tubelet.png, H_projections.png, gradH_projections.png,
+tube_metrics_summary.png}`,
+`video_vjepa2/{tube_metrics_synth.csv,
+const_input_temporal_variance.csv, summary.json}`,
+`video_vjepa2/synth_streamtubes_L24.html`.
+
 ## What this is + isn't
 
 - It IS: a clean depth-wise structural finding in trained-ViT residual
