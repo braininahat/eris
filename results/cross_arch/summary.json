@@ -1,0 +1,76 @@
+{
+  "n_images": 200,
+  "image_indices_sample": [
+    26,
+    52,
+    81,
+    146,
+    162
+  ],
+  "seed": 0,
+  "n_bootstrap": 2000,
+  "archs": {
+    "vit_b16": {
+      "model_name": "google/vit-base-patch16-224",
+      "n_layers": 12,
+      "n_images": 200,
+      "median_L_trans": 5.0,
+      "median_L_trans_rel": 0.4166666666666667,
+      "ci95_L_trans_rel_lo": 0.4166666666666667,
+      "ci95_L_trans_rel_hi": 0.4166666666666667,
+      "L_trans_iqr": 0.0,
+      "L_trans_min": 4,
+      "L_trans_max": 5,
+      "L_trans_iqr_rel": 0.0,
+      "peak_to_median_ratio": 9.29641532215534,
+      "is_coherent": true
+    },
+    "vit_l16": {
+      "model_name": "google/vit-large-patch16-224",
+      "n_layers": 24,
+      "n_images": 200,
+      "median_L_trans": 5.0,
+      "median_L_trans_rel": 0.20833333333333334,
+      "ci95_L_trans_rel_lo": 0.20833333333333334,
+      "ci95_L_trans_rel_hi": 0.20833333333333334,
+      "L_trans_iqr": 0.0,
+      "L_trans_min": 5,
+      "L_trans_max": 6,
+      "L_trans_iqr_rel": 0.0,
+      "peak_to_median_ratio": 21.232915650953004,
+      "is_coherent": true
+    },
+    "dinov2_b": {
+      "model_name": "facebook/dinov2-base",
+      "n_layers": 12,
+      "n_images": 200,
+      "median_L_trans": 8.0,
+      "median_L_trans_rel": 0.6666666666666666,
+      "ci95_L_trans_rel_lo": 0.6666666666666666,
+      "ci95_L_trans_rel_hi": 0.6666666666666666,
+      "L_trans_iqr": 0.0,
+      "L_trans_min": 8,
+      "L_trans_max": 8,
+      "L_trans_iqr_rel": 0.0,
+      "peak_to_median_ratio": 4.970112746307372,
+      "is_coherent": true
+    },
+    "clip_b16": {
+      "model_name": "openai/clip-vit-base-patch16",
+      "n_layers": 12,
+      "n_images": 200,
+      "median_L_trans": 7.0,
+      "median_L_trans_rel": 0.5833333333333334,
+      "ci95_L_trans_rel_lo": 0.5833333333333334,
+      "ci95_L_trans_rel_hi": 0.5833333333333334,
+      "L_trans_iqr": 0.0,
+      "L_trans_min": 6,
+      "L_trans_max": 11,
+      "L_trans_iqr_rel": 0.0,
+      "peak_to_median_ratio": 4.000536817940664,
+      "is_coherent": true
+    }
+  },
+  "n_coherent": 4,
+  "stop_triggered": false
+}

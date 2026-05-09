@@ -1,0 +1,9 @@
+video,arch,layer,n_voxels_top5pct,largest_cc_size,n_components,iou_vs_gt
+real_clip,dinov2_b,6,820,432,75,
+real_clip,dinov2_b,12,820,204,101,
+real_clip,vit_b16,6,628,273,60,
+real_clip,vit_b16,12,628,276,55,
+synth_translating_blob,dinov2_b,6,820,22,387,0.0
+synth_translating_blob,dinov2_b,12,820,182,427,0.0
+synth_translating_blob,vit_b16,6,628,13,421,0.0
+synth_translating_blob,vit_b16,12,628,13,395,0.0

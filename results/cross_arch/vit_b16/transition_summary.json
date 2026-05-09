@@ -1,0 +1,15 @@
+{
+  "model_name": "google/vit-base-patch16-224",
+  "n_layers": 12,
+  "n_images": 200,
+  "median_L_trans": 5.0,
+  "median_L_trans_rel": 0.4166666666666667,
+  "ci95_L_trans_rel_lo": 0.4166666666666667,
+  "ci95_L_trans_rel_hi": 0.4166666666666667,
+  "L_trans_iqr": 0.0,
+  "L_trans_min": 4,
+  "L_trans_max": 5,
+  "L_trans_iqr_rel": 0.0,
+  "peak_to_median_ratio": 9.29641532215534,
+  "is_coherent": true
+}

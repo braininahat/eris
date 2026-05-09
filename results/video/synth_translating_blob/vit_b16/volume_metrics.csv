@@ -1,0 +1,3 @@
+video,arch,layer,n_voxels_top5pct,largest_cc_size,n_components,iou_vs_gt
+synth_translating_blob,vit_b16,6,628,13,421,0.0
+synth_translating_blob,vit_b16,12,628,13,395,0.0

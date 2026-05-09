@@ -1,0 +1,5 @@
+video,arch,transition_median,transition_std,frac_within_one_of_median
+real_clip,dinov2_b,8.0,0.0,1.0
+real_clip,vit_b16,5.0,0.0,1.0
+synth_translating_blob,dinov2_b,8.0,0.0,1.0
+synth_translating_blob,vit_b16,5.0,0.0,1.0
