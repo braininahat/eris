@@ -78,7 +78,7 @@ LAYERS_FOR_VOLUME = (6, 12)        # 1-indexed
 LAYER_FOR_RENDER = 6               # the headline layer (1-indexed)
 TOP_PCT = 5.0
 DILATE_PATCHES = 1
-SPATIAL_UPSAMPLE_RENDER = 4        # 14*4=56, 16*4=64 — meets ≥56 spec
+SPATIAL_RENDER_SHAPE = (56, 56)    # both archs upsampled to 56×56 per spec
 
 # %% [markdown]
 # ## 1. Load `H_video` from B1, recover synthetic ground-truth tube
@@ -239,7 +239,7 @@ for arch in ARCHS:
                         f"@ L{layer_one_idx}"
                     ),
                     starts=4,
-                    upsample_xy=SPATIAL_UPSAMPLE_RENDER,
+                    target_shape=SPATIAL_RENDER_SHAPE,
                     sizeref=0.5,
                 )
                 streamtube_paths.append(html_path)
