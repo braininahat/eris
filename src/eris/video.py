@@ -232,6 +232,87 @@ def load_real_video(
     raise RuntimeError(f"could not load any real video; last error: {last_err}")
 
 
+def load_ssv2_clips(
+    n_clips: int = 5,
+    n_frames: int = 64,
+    size: int = 256,
+    seed: int = 42,
+    cache_path: Path | None = None,
+    hf_dataset: str = "jxie/something_something_v2",
+    buffer_size: int = 200,
+) -> tuple[np.ndarray, list[dict]]:
+    """Stream a small Something-Something-v2 sample, return ``(n, T, H, W, 3)``.
+
+    SSv2 is the canonical motion-discrimination eval for video models;
+    V-JEPA 2 is benchmarked on it in the original paper. Streaming
+    avoids the 19.5 GB full download — we just decode the clips we
+    need.
+
+    Args:
+        n_clips: number of clips to return.
+        n_frames: contiguous frames per clip (skips clips that are
+            shorter than this).
+        size: output spatial size after centre-crop + resize.
+        seed: shuffle seed for clip selection.
+        cache_path: optional ``.npz`` cache (default off — caller can
+            wrap in their own cache layer).
+        hf_dataset: HF Hub dataset id; defaults to a parquet mirror that
+            doesn't require the loading-script auth dance.
+        buffer_size: shuffle buffer size for ``ds.shuffle``.
+
+    Returns:
+        ``(clips, metas)`` — ``clips`` of shape ``(n_clips, n_frames, size,
+        size, 3)`` uint8; ``metas`` is a list of per-clip dicts with
+        ``{"num_frames", "fps", "height", "width"}``.
+    """
+    if cache_path is not None and Path(cache_path).exists():
+        z = np.load(cache_path, allow_pickle=True)
+        return z["clips"], list(z["metas"])
+
+    from datasets import load_dataset
+    from PIL import Image
+
+    ds = load_dataset(hf_dataset, split="train", streaming=True)
+    ds = ds.shuffle(seed=seed, buffer_size=buffer_size)
+    it = iter(ds)
+    out_clips = []
+    out_metas: list[dict] = []
+    while len(out_clips) < n_clips:
+        sample = next(it)
+        decoder = sample["video"]                # torchcodec.VideoDecoder
+        meta = decoder.metadata
+        if meta.num_frames < n_frames:
+            continue
+        clip_t = decoder[:n_frames]              # (T, 3, H, W) uint8 torch
+        arr = clip_t.permute(0, 2, 3, 1).cpu().numpy()    # (T, H, W, 3)
+        # centre-crop to square then resize per frame
+        T, H, W, _ = arr.shape
+        s = min(H, W)
+        y0 = (H - s) // 2
+        x0 = (W - s) // 2
+        out = np.empty((T, size, size, 3), dtype=np.uint8)
+        for t in range(T):
+            crop = arr[t, y0 : y0 + s, x0 : x0 + s]
+            out[t] = np.asarray(
+                Image.fromarray(crop).resize((size, size), Image.BILINEAR)
+            )
+        out_clips.append(out)
+        out_metas.append({
+            "num_frames_total": int(meta.num_frames),
+            "fps": float(meta.average_fps) if meta.average_fps else None,
+            "height": int(meta.height),
+            "width": int(meta.width),
+            "n_frames_used": int(n_frames),
+        })
+
+    clips = np.stack(out_clips, axis=0)
+    if cache_path is not None:
+        Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(cache_path, clips=clips,
+                            metas=np.array(out_metas, dtype=object))
+    return clips, out_metas
+
+
 def _download(url: str, path: Path) -> None:
     """Tiny urllib download (no extra deps, fine for ~10 MB clips)."""
     import urllib.request

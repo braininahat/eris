@@ -152,43 +152,56 @@ projection.)
 ### 6. V-JEPA 2 (native-3D video ViT) injects temporal positional structure that overwhelms motion content in mid-network residuals
 
 `facebook/vjepa2-vitl-fpc64-256` — 24-block self-supervised video ViT
-(326M params, 64 frames × 256², tubelet=2 → 32×16×16 token grid). Three
-clips, all 64 frames at 256²:
+(326M params, 64 frames × 256², tubelet=2 → 32×16×16 token grid).
+Stimuli:
 
-- **synth**: translating Gaussian blob (same trajectory as Step B).
-- **real**: Big Buck Bunny, same source clip as Step B.
-- **const**: 64 identical copies of `real[32]` — a "constant-content"
+- **5 SSv2 clips** sampled from `jxie/something_something_v2` (the
+  Something-Something v2 eval set; also the canonical motion-
+  discrimination benchmark V-JEPA 2 is evaluated on in the original
+  paper). First 64 frames each, centre-crop + resize to 256². Native
+  fps = 12.
+- **const**: 64 identical copies of `ssv2_0[32]` — a "constant-content"
   control. If V-JEPA 2 only encodes content, the resulting (gt, gy,
   gx) entropy volume should have ~zero variance along `t`.
+- **synth** translating Gaussian blob — kept ONLY for the volumetric
+  tube-IoU sanity check, since it's the one stimulus with a known GT
+  trajectory; not part of the phase / projection / Δt-std comparison.
 
 **Phase signature differs qualitatively from supervised / SSL still-
-image ViTs.** Per-layer H_mean rises monotonically (does not drop);
-H_std and mean |∇₃H| form a *broad arch* peaking at L=11-17, not a
-sharp single-layer spike. Per-clip transition layers (argmax ΔH-std)
-all sit at L=24 — the final-layer-norm bump — with peak/median ratios
-3.5–10.5×, lower than supervised ViTs' 4–21× spike sharpness. So
-V-JEPA 2 has no L4→L5-style phase transition in the same sense.
+image ViTs.** Per-layer H_mean rises monotonically with depth (does
+not drop); H_std forms a high-shallow / low-mid / high-late three-band
+shape rather than a sharp single-layer spike. Per-clip transition
+layers (argmax ΔH-std) sit at L=24 (the final-layer-norm bump) for
+4 / 5 SSv2 clips and for const, with peak/median ratios 2.8–6.5× —
+lower than supervised ViTs' 4–21× spike sharpness. So V-JEPA 2 has
+no L4→L5-style phase transition in the same sense.
 
 **The const clip exposes V-JEPA 2's temporal positional encoding.**
 Define `Δt-std(L) = std over tubelet t of spatial-mean H[L, t, :, :]`.
 Predictions:
-- if V-JEPA 2 is content-faithful, const should have Δt-std ≈ 0 for
+- if V-JEPA 2 is content-faithful, const should have Δt-std ≈ 0 at
   all layers;
-- synth (slow translation) should have moderate Δt-std;
-- real (rich scene dynamics) should have largest Δt-std.
+- the SSv2 clips (rich hand-object motion) should have larger Δt-std,
+  representing genuine temporal variance.
 
 Actual:
-- `const` has the *highest* Δt-std at every mid-network layer, peaking
-  at 0.10 around L=15; only matches the others' near-zero values at
-  L=1-2 and L=24.
-- `synth` has the *lowest* Δt-std for L=1-21.
-- `real` sits between, near 0.03 across all layers.
+- All 5 SSv2 clips cluster between Δt-std = 0.01 and 0.05 across all
+  layers (mean ≈ 0.02 from L=5 onwards).
+- `const` starts near 0 at L=1, rises sharply through L=3, and from
+  L=5 onwards is **strictly above every individual SSv2 clip**,
+  peaking at Δt-std ≈ 0.09 at L=15. Only at L=24 does it return to
+  the SSv2 band.
 
-V-JEPA 2 invents temporal structure on a static-content input and
-that injected structure is *larger* than the content-driven motion
-variance at every mid-network layer. The per-tubelet transition layer
-on `const` is bimodal between L≈6 and L=24 with std=9.57 across t
-(synth std=0, real std=4.7).
+V-JEPA 2 fabricates temporal residual-stream structure on a static-
+content input and that injected structure is **2-3× larger** than
+the content-driven temporal variance V-JEPA 2 produces on actual
+SSv2 motion clips at every mid-network layer.
+
+Per-tubelet transition layer on the same data: 4 / 5 SSv2 clips have
+median L_trans = 24 with std across tubelets 6.8–10.6; ssv2_4 lives
+entirely at L=3 (std=0); const oscillates between L=3 and L=24 with
+std=10.3 — comparable variance to noisy SSv2 clips despite zero input
+motion.
 
 **Volumetric outlier-tube tracking on the synth blob:** unlike
 ViT-B/16 (Step B — bundle IoU = 0, 60-80 % of top-5 % |∇H| voxels on

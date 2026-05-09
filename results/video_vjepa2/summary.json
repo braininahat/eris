@@ -7,27 +7,94 @@
     16,
     16
   ],
+  "stimuli": {
+    "ssv2_clips": [
+      {
+        "index": 0,
+        "num_frames_total": 69,
+        "fps": 12.0,
+        "height": 240,
+        "width": 360,
+        "n_frames_used": 64
+      },
+      {
+        "index": 1,
+        "num_frames_total": 70,
+        "fps": 11.83231913455037,
+        "height": 240,
+        "width": 427,
+        "n_frames_used": 64
+      },
+      {
+        "index": 2,
+        "num_frames_total": 65,
+        "fps": 12.001477104874445,
+        "height": 240,
+        "width": 360,
+        "n_frames_used": 64
+      },
+      {
+        "index": 3,
+        "num_frames_total": 64,
+        "fps": 12.00075004687793,
+        "height": 240,
+        "width": 427,
+        "n_frames_used": 64
+      },
+      {
+        "index": 4,
+        "num_frames_total": 70,
+        "fps": 12.000685753471627,
+        "height": 240,
+        "width": 427,
+        "n_frames_used": 64
+      }
+    ],
+    "const": "64 identical copies of ssv2_0[32]",
+    "synth": "translating Gaussian blob; only used in \u00a76 tube-IoU sanity"
+  },
   "transition_per_video": [
     {
-      "video": "synth",
+      "video": "ssv2_0",
       "L_trans": 24,
-      "peak_dHstd": 0.0834612250328064,
-      "median_dHstd": 0.007933169603347778,
-      "peak_over_median": 10.520539608479561
+      "peak_dHstd": 0.07929284870624542,
+      "median_dHstd": 0.014031678438186646,
+      "peak_over_median": 5.650988159082462
     },
     {
-      "video": "real",
+      "video": "ssv2_1",
       "L_trans": 24,
-      "peak_dHstd": 0.0562511682510376,
-      "median_dHstd": 0.010866306722164154,
-      "peak_over_median": 5.176659346114474
+      "peak_dHstd": 0.056546684354543686,
+      "median_dHstd": 0.011685699224472046,
+      "peak_over_median": 4.838964555593244
+    },
+    {
+      "video": "ssv2_2",
+      "L_trans": 24,
+      "peak_dHstd": 0.0456046424806118,
+      "median_dHstd": 0.01609957590699196,
+      "peak_over_median": 2.8326611051168094
+    },
+    {
+      "video": "ssv2_3",
+      "L_trans": 24,
+      "peak_dHstd": 0.053621042519807816,
+      "median_dHstd": 0.012484431266784668,
+      "peak_over_median": 4.295032859243557
+    },
+    {
+      "video": "ssv2_4",
+      "L_trans": 3,
+      "peak_dHstd": 0.08126167953014374,
+      "median_dHstd": 0.012733601033687592,
+      "peak_over_median": 6.381673127276451
     },
     {
       "video": "const",
       "L_trans": 24,
-      "peak_dHstd": 0.04320434108376503,
-      "median_dHstd": 0.012211799621582031,
-      "peak_over_median": 3.537917622510738
+      "peak_dHstd": 0.07886694371700287,
+      "median_dHstd": 0.012176364660263062,
+      "peak_over_median": 6.47705172418013
     }
   ],
   "best_synth_tube_iou": {

@@ -25,18 +25,25 @@
 # Two questions:
 # 1. Does V-JEPA 2 also exhibit a sharp depth-wise phase transition in
 #    standardised per-token entropy, like the still-image ViTs?
-# 2. On the synthetic translating-blob stimulus, does the volumetric
-#    high-|∇H| component at the transition layer track the ground-truth
-#    blob trajectory in (t, y, x)? In Step B (still-image ViTs +
-#    per-frame fields, then stitched volumetrically) this metric was
-#    dominated by register-token edge artefacts (Darcet et al. 2024).
-#    A native-3D model has a chance to do better.
+# 2. Does the volumetric high-|∇H| component at any depth track real
+#    motion content in the input — or is it dominated by register-token-
+#    style edge artefacts (Darcet et al. 2024) and temporal positional
+#    structure injected by the model regardless of content?
 #
-# Two stimuli, ViT-L (24 layers, 1024 hidden, 32×16×16 token grid for
+# Stimuli, ViT-L (24 layers, 1024 hidden, 32×16×16 token grid for
 # fpc=64 / 256² input):
-# - synthetic blob (same trajectory as Step B, just 256² instead of 224²
-#   for V-JEPA 2's preprocessor).
-# - Big Buck Bunny clip (same source, same 64-frame slice, 256²).
+# - **Five real clips** from Big Buck Bunny, sampled at different
+#   timestamps to cover varied content (opening titles, character
+#   close-ups, object motion, scene cuts, camera pans). 64 frames at
+#   stride-2, 256². Real visual diversity, not a toy stimulus.
+# - **Constant-content control**: 64 identical copies of one frame.
+#   If V-JEPA 2 only encoded content, the resulting (gt, gy, gx)
+#   entropy volume should have ~zero variance along `t`.
+# - **Synthetic translating Gaussian blob** — kept ONLY as the
+#   sanity check for the volumetric tube-IoU metric, because it's the
+#   one stimulus with a known ground-truth trajectory in (t, y, x).
+#   It is *not* used in the phase / projection comparisons — too toy
+#   relative to V-JEPA 2's pretraining distribution.
 
 # %%
 from pathlib import Path
@@ -49,6 +56,7 @@ from eris.fields import gradient_3d
 from eris.video import (
     blob_centres_to_patch,
     load_real_video,
+    load_ssv2_clips,
     synthesise_translating_blob,
 )
 from eris.volumetric import extract_outlier_tubes, iou_3d, render_streamtubes_html
@@ -62,7 +70,46 @@ N_FRAMES = 64
 IMG_SIZE = 256
 
 # %% [markdown]
-# ## 1. Build / load the two stimuli at 256²
+# ## 1. Load the stimuli at 256²
+#
+# Five real clips from Something-Something v2 — the canonical motion-
+# discrimination eval set, used to benchmark V-JEPA 2 in the original
+# paper. SSv2 clips are 2-6 s of human-object interaction; we take
+# the first 64 frames of each. Streamed from a parquet mirror so we
+# don't need the 19.5 GB full download.
+
+# %%
+N_SSV2_CLIPS = 5
+ssv2_cache = REPO / "data" / "cache" / f"ssv2_{N_SSV2_CLIPS}clips_{N_FRAMES}f_{IMG_SIZE}.npz"
+ssv2_clips, ssv2_metas = load_ssv2_clips(
+    n_clips=N_SSV2_CLIPS, n_frames=N_FRAMES, size=IMG_SIZE,
+    seed=42, cache_path=ssv2_cache,
+)
+print(f"ssv2: {ssv2_clips.shape}")
+for i, m in enumerate(ssv2_metas):
+    print(f"  clip {i}: native_frames={m['num_frames_total']} "
+          f"fps={m['fps']:.1f} hxw={m['height']}x{m['width']}")
+
+# %% [markdown]
+# ### Constant-content control — does V-JEPA 2 invent temporal structure?
+#
+# 64 identical copies of the middle frame of SSv2 clip 0. If V-JEPA 2
+# only encoded content, the resulting (gt, gy, gx) entropy volume
+# should be ~constant along `t` (every tubelet sees the same image).
+# Any structure along `t` is an artefact of the model's positional
+# encoding rather than scene dynamics.
+
+# %%
+static_frame = ssv2_clips[0, N_FRAMES // 2]                       # (256, 256, 3)
+const_frames = np.broadcast_to(static_frame, (N_FRAMES, IMG_SIZE, IMG_SIZE, 3)).copy()
+print(f"const: {const_frames.shape}   "
+      f"all frames identical: {np.array_equal(const_frames[0], const_frames[-1])}")
+
+# %% [markdown]
+# ### Synthetic translating blob — kept ONLY for the volumetric tube-IoU
+# sanity check in §6, since it's the one stimulus with a known ground-
+# truth trajectory in (t, y, x). Not used in the phase / projection
+# comparisons.
 
 # %%
 synth_frames, synth_meta = synthesise_translating_blob(
@@ -71,33 +118,6 @@ synth_frames, synth_meta = synthesise_translating_blob(
 )
 print(f"synth: {synth_frames.shape}  blob crosses {synth_meta.centres_xy[0]} → "
       f"{synth_meta.centres_xy[-1]}")
-
-real_frames, real_meta = load_real_video(
-    out_path=RESULTS / "real_clip.mp4",
-    cache_dir=REPO / "data" / "cache",
-    n_frames=N_FRAMES, size=IMG_SIZE, stride=2, skip_first=900,
-)
-print(f"real: {real_frames.shape}  source={real_meta['source_name']}")
-
-# %% [markdown]
-# ### Constant-depth control
-#
-# Input volume with no temporal variation: 64 identical frames. If
-# V-JEPA 2 actually uses the temporal axis in its residual stream, the
-# resulting (gt, gy, gx) entropy volume should be ~constant along
-# `t` (modulo numerical noise) — every tubelet sees the same content.
-# If we observe structure along `t` anyway, that's an artefact of the
-# temporal positional encoding rather than scene dynamics, and the
-# volumetric framing on real videos needs caveating.
-#
-# Use the middle frame of the real clip (more naturalistic statistics
-# than the synth blob) as the static content.
-
-# %%
-static_frame = real_frames[N_FRAMES // 2]                          # (256, 256, 3)
-const_frames = np.broadcast_to(static_frame, (N_FRAMES, IMG_SIZE, IMG_SIZE, 3)).copy()
-print(f"const: {const_frames.shape}   "
-      f"all frames identical: {np.array_equal(const_frames[0], const_frames[-1])}")
 
 # %% [markdown]
 # ## 2. Run V-JEPA 2 → per-layer 3-D entropy volume per clip
@@ -120,11 +140,19 @@ def cached_volume(arch: str, name: str, frames: np.ndarray) -> np.ndarray:
     return vol
 
 
-H_synth = cached_volume(ARCH, "synth", synth_frames)
-H_real = cached_volume(ARCH, "real", real_frames)
+H_ssv2 = [cached_volume(ARCH, f"ssv2{i}", ssv2_clips[i])
+          for i in range(N_SSV2_CLIPS)]
 H_const = cached_volume(ARCH, "const", const_frames)
-print(f"H_synth: {H_synth.shape}   H_real: {H_real.shape}   "
-      f"H_const: {H_const.shape}")
+H_synth = cached_volume(ARCH, "synth", synth_frames)
+print(f"H_ssv2[0]: {H_ssv2[0].shape}   "
+      f"H_const: {H_const.shape}   H_synth: {H_synth.shape}")
+
+# Convenience labels for the multi-clip comparison.  Synth is dropped
+# from this set; it returns only in §6 for the tube-IoU sanity check.
+COMPARISON_VOLS = (
+    [(f"ssv2_{i}", H_ssv2[i]) for i in range(N_SSV2_CLIPS)]
+    + [("const", H_const)]
+)
 
 # %% [markdown]
 # ## 3. Phase curves vs depth (mean, std, |∇H|, ΔH-std)
@@ -145,8 +173,7 @@ def phase_curves(H_vol: np.ndarray) -> dict[str, np.ndarray]:
             "grad_mag": grad_mag, "dH_std": dH_std}
 
 
-curves = {name: phase_curves(vol) for name, vol in
-          [("synth", H_synth), ("real", H_real), ("const", H_const)]}
+curves = {name: phase_curves(vol) for name, vol in COMPARISON_VOLS}
 fig, axes = plt.subplots(1, 4, figsize=(18, 4), sharex=True)
 metric_titles = [("H_mean", "H mean"),
                  ("H_std", "H std (within-layer spread)"),
@@ -155,10 +182,13 @@ metric_titles = [("H_mean", "H mean"),
 for ax, (key, title) in zip(axes, metric_titles):
     for name, c in curves.items():
         n_L = len(c[key])
-        ax.plot(np.arange(1, n_L + 1), c[key], "-o", label=name, ms=4)
+        ls = "--" if name == "const" else "-"
+        ax.plot(np.arange(1, n_L + 1), c[key], ls + "o", label=name, ms=3,
+                lw=1.6 if name == "const" else 1.2,
+                color="black" if name == "const" else None)
     ax.set_title(title); ax.set_xlabel("layer")
     ax.grid(True, alpha=0.3)
-axes[0].legend()
+axes[0].legend(fontsize=8)
 fig.suptitle(f"{ARCH} — per-layer entropy field summary, two video stimuli",
              y=1.01)
 fig.tight_layout()
@@ -180,6 +210,9 @@ for name, c in curves.items():
                           "peak_dHstd": peak, "median_dHstd": median,
                           "peak_over_median": sharpness})
     print(f"{name}: L_trans={L_argmax}  peak/median ΔH-std = {sharpness:.2f}")
+import pandas as pd
+pd.DataFrame(trans_summary).to_csv(
+    RESULTS / "transition_per_clip.csv", index=False)
 
 # %% [markdown]
 # ## 4. Per-tubelet transition stability
@@ -201,18 +234,18 @@ def per_tubelet_transition(H_vol: np.ndarray) -> np.ndarray:
     return out
 
 
-fig, axes = plt.subplots(1, 3, figsize=(15, 4), sharey=True)
-for ax, (name, vol) in zip(axes,
-                           [("synth", H_synth), ("real", H_real),
-                            ("const", H_const)]):
+n_panels = len(COMPARISON_VOLS)
+fig, axes = plt.subplots(1, n_panels, figsize=(3.4 * n_panels, 3.8),
+                         sharey=True)
+for ax, (name, vol) in zip(axes, COMPARISON_VOLS):
     ts = per_tubelet_transition(vol)
     ax.plot(np.arange(1, len(ts) + 1), ts, "o-", ms=4)
     ax.axhline(int(np.median(ts)), ls=":", c="gray",
                label=f"median = {int(np.median(ts))}")
     ax.set_xlabel("tubelet index t (1..32)")
     ax.set_ylabel("argmax ΔH-std layer")
-    ax.set_title(f"{name}  (std across tubelets = {ts.std():.2f})")
-    ax.grid(True, alpha=0.3); ax.legend()
+    ax.set_title(f"{name}  (std = {ts.std():.2f})", fontsize=10)
+    ax.grid(True, alpha=0.3); ax.legend(fontsize=8)
 fig.suptitle(f"{ARCH} — per-tubelet transition layer stability", y=1.02)
 fig.tight_layout()
 fig.savefig(RESULTS / "transition_per_tubelet.png", dpi=140, bbox_inches="tight")
@@ -223,16 +256,16 @@ print(f"saved {RESULTS / 'transition_per_tubelet.png'}")
 # ## 5. Layer × tubelet H_std heatmap — global view of the depth × time field
 
 # %%
-fig, axes = plt.subplots(3, 1, figsize=(10, 9), sharex=True)
-for ax, (name, vol) in zip(axes,
-                           [("synth", H_synth), ("real", H_real),
-                            ("const", H_const)]):
+n_panels = len(COMPARISON_VOLS)
+fig, axes = plt.subplots(n_panels, 1, figsize=(10, 2.4 * n_panels),
+                         sharex=True)
+for ax, (name, vol) in zip(axes, COMPARISON_VOLS):
     n_L, gt, gy, gx = vol.shape
     grid = vol.reshape(n_L, gt, -1).std(axis=2)            # (n_L, gt)
     im = ax.imshow(grid, aspect="auto", origin="lower",
                    extent=(1, gt, 1, n_L), cmap="magma")
     ax.set_ylabel("layer")
-    ax.set_title(f"{name} — H_std(L, t)")
+    ax.set_title(f"{name} — H_std(L, t)", fontsize=10)
     fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02, label="H_std")
 axes[-1].set_xlabel("tubelet index t")
 fig.suptitle(f"{ARCH} — per-(layer, tubelet) within-spatial spread",
@@ -264,33 +297,34 @@ def xy_std(H_vol: np.ndarray) -> np.ndarray:
     return H_vol.std(axis=(2, 3)).mean(axis=1)
 
 
-fig, ax = plt.subplots(figsize=(8, 4.5))
-for name, vol in [("synth", H_synth), ("real", H_real), ("const", H_const)]:
-    ax.plot(np.arange(1, vol.shape[0] + 1), t_std(vol), "-o",
-            ms=4, label=f"{name}  (Δt-std)")
+fig, ax = plt.subplots(figsize=(9, 5))
+for name, vol in COMPARISON_VOLS:
+    style = "k--o" if name == "const" else "-o"
+    lw = 2.0 if name == "const" else 1.0
+    ms = 5 if name == "const" else 3
+    ax.plot(np.arange(1, vol.shape[0] + 1), t_std(vol), style,
+            ms=ms, lw=lw, label=name)
 ax.set_xlabel("layer")
 ax.set_ylabel("std over tubelet t  of spatial-mean H")
-ax.set_title("Temporal variance per layer.\n"
+ax.set_title("Temporal variance per layer  (5 SSv2 clips vs const).\n"
              "const should be ~0 if V-JEPA 2 only encodes content")
-ax.grid(True, alpha=0.3); ax.legend()
+ax.grid(True, alpha=0.3); ax.legend(ncol=2, fontsize=9)
 fig.tight_layout()
 fig.savefig(RESULTS / "const_input_temporal_variance.png", dpi=140,
             bbox_inches="tight")
 plt.close(fig)
 print(f"saved {RESULTS / 'const_input_temporal_variance.png'}")
 
-# Numeric ratio: const Δt-std as fraction of real Δt-std (per layer).
-import pandas as pd
+# Numeric ratio: const Δt-std vs the per-layer mean across the 5 SSv2 clips.
+ssv2_t_std = np.stack([t_std(H_ssv2[i]) for i in range(N_SSV2_CLIPS)], axis=0)
 ratios = pd.DataFrame({
-    "L": np.arange(1, H_synth.shape[0] + 1),
-    "synth_t_std": t_std(H_synth),
-    "real_t_std": t_std(H_real),
-    "const_t_std": t_std(H_const),
+    "L": np.arange(1, H_const.shape[0] + 1),
+    "ssv2_t_std_mean": ssv2_t_std.mean(axis=0),
+    "ssv2_t_std_std":  ssv2_t_std.std(axis=0),
+    "const_t_std":     t_std(H_const),
 })
-ratios["const_over_real"] = ratios["const_t_std"] / np.maximum(
-    ratios["real_t_std"], 1e-12)
-ratios["const_over_synth"] = ratios["const_t_std"] / np.maximum(
-    ratios["synth_t_std"], 1e-12)
+ratios["const_over_ssv2mean"] = ratios["const_t_std"] / np.maximum(
+    ratios["ssv2_t_std_mean"], 1e-12)
 ratios.to_csv(RESULTS / "const_input_temporal_variance.csv", index=False)
 print(ratios.round(4).to_string(index=False))
 
@@ -376,8 +410,17 @@ def plot_projection_grid(
 
 # Pick layers spanning the depth: shallow / mid / late.
 LAYERS_INTEREST = [4, 12, 24]
+
+# Visualisation set: a small subset of SSv2 clips + const + synth.
+# Five SSv2 clips would explode the figure; show 2 to keep it scannable.
+PROJ_VOLS = [
+    ("ssv2_0", H_ssv2[0]),
+    ("ssv2_1", H_ssv2[1]),
+    ("const",  H_const),
+    ("synth",  H_synth),
+]
 plot_projection_grid(
-    [("synth", H_synth), ("real", H_real), ("const", H_const)],
+    PROJ_VOLS,
     out_path=RESULTS / "H_projections.png",
     layers_of_interest=LAYERS_INTEREST,
     title=f"{ARCH} — per-layer H volume projections "
@@ -396,16 +439,19 @@ def gradmag_volume(vol: np.ndarray) -> np.ndarray:
     return out
 
 
-grad_synth = gradmag_volume(H_synth)
-grad_real = gradmag_volume(H_real)
+grad_ssv2_0 = gradmag_volume(H_ssv2[0])
+grad_ssv2_1 = gradmag_volume(H_ssv2[1])
 grad_const = gradmag_volume(H_const)
+grad_synth = gradmag_volume(H_synth)
 
 plot_projection_grid(
-    [("synth", grad_synth), ("real", grad_real), ("const", grad_const)],
+    [("ssv2_0", grad_ssv2_0), ("ssv2_1", grad_ssv2_1),
+     ("const",  grad_const),  ("synth",  grad_synth)],
     out_path=RESULTS / "gradH_projections.png",
     layers_of_interest=LAYERS_INTEREST,
     title=f"{ARCH} — per-layer |∇₃H| volume projections "
-          f"(min / mean / max; look for diagonals in y-axis cols for synth)",
+          f"(min / mean / max; synth row reveals motion as a diagonal "
+          f"in y-axis cols at L=4)",
     cmap="inferno",
 )
 print(f"saved {RESULTS / 'gradH_projections.png'}")
@@ -601,9 +647,9 @@ def render_field_over_video(frames: np.ndarray, H_vol: np.ndarray, L_idx: int,
 render_field_over_video(synth_frames, H_synth, best_L - 1,
                         RESULTS / f"synth_H_L{best_L}.gif",
                         f"{ARCH} synth blob")
-render_field_over_video(real_frames, H_real, best_L - 1,
-                        RESULTS / f"real_H_L{best_L}.gif",
-                        f"{ARCH} real clip")
+render_field_over_video(ssv2_clips[0], H_ssv2[0], best_L - 1,
+                        RESULTS / f"ssv2_0_H_L{best_L}.gif",
+                        f"{ARCH} ssv2 clip 0")
 print(f"saved depth_x_time GIFs at L={best_L}")
 
 # %% [markdown]
@@ -631,8 +677,13 @@ import json
 summary = {
     "arch": ARCH,
     "model": "facebook/vjepa2-vitl-fpc64-256",
-    "n_layers": int(H_synth.shape[0]),
-    "grid_size_3d": list(H_synth.shape[1:]),
+    "n_layers": int(H_const.shape[0]),
+    "grid_size_3d": list(H_const.shape[1:]),
+    "stimuli": {
+        "ssv2_clips": [{"index": i, **m} for i, m in enumerate(ssv2_metas)],
+        "const": "64 identical copies of ssv2_0[32]",
+        "synth": "translating Gaussian blob; only used in §6 tube-IoU sanity",
+    },
     "transition_per_video": trans_summary,
     "best_synth_tube_iou": {
         "L": best_L,

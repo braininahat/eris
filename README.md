@@ -22,9 +22,11 @@ outlier-tube tracking on a synthetic translating blob fails for ViT-B/16
 due to register-token edge dominance (Darcet et al. 2024). Native-3D
 V-JEPA 2 escapes the spatial register-token artefact at shallow layers
 (tube IoU = 0.24 at L=2 vs ViT-B/16's 0.00) but injects a temporal-PE
-pattern that overwhelms content motion at mid-network — even on a
-constant-content video, mid-network residuals exhibit larger temporal
-variance than for a genuinely moving clip.
+pattern that overwhelms content motion at mid-network — when V-JEPA 2
+is run on 64 identical frames vs five 64-frame Something-Something v2
+eval clips, the constant-content stimulus exhibits 2-3× *larger* per-
+tubelet temporal variance in mid-network residuals than every actual
+moving SSv2 clip.
 
 See `results/summary.md` for the full read-out and `results/` for figures
 and tensors.
