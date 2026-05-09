@@ -232,6 +232,106 @@ print(f"saved {out_csv}  ({len(df)} rows)")
 # %% [markdown]
 # ## Headline tables
 
+# %% [markdown]
+# ## Visualisations
+
+# %%
+import matplotlib.pyplot as plt
+from PIL import Image
+
+REAL_VIDEO_FRAME_REF = REPO / "results" / "video" / "real_clip" / "vit_b16"  # for thumbnail
+
+fig = plt.figure(figsize=(16, 10))
+gs = fig.add_gridspec(3, 2, height_ratios=[1, 1, 1], hspace=0.45, wspace=0.30)
+
+# (1) Bundle IoU vs k_ccs sweep, kfrac=0.20 only, lines per (arch, layer)
+ax = fig.add_subplot(gs[0, 0])
+sub = df[(df["metric"] == "bundle_iou") & (df["kfrac"] == 0.20)
+         & (df["video"] == "synth_translating_blob")]
+for (arch, layer), g in sub.groupby(["arch", "layer"]):
+    g = g.sort_values("k_ccs")
+    ax.plot(g["k_ccs"], g["value"], marker="o",
+            label=f"{arch} L={layer + 1}")
+ax.set_xscale("log")
+ax.set_xlabel("top-K connected components")
+ax.set_ylabel("Bundle IoU vs GT tube")
+ax.set_title("synth blob: bundle IoU sweep (kfrac=0.20)")
+ax.axhline(0.30, color="0.6", lw=0.8, ls="--", label="stop-condition (0.30)")
+ax.legend(fontsize=8); ax.grid(alpha=0.3)
+
+# (2) Per-frame overlap fraction vs kfrac (synth)
+ax = fig.add_subplot(gs[0, 1])
+sub = df[(df["metric"] == "per_frame_overlap")
+         & (df["video"] == "synth_translating_blob")]
+for (arch, layer), g in sub.groupby(["arch", "layer"]):
+    g = g.sort_values("kfrac")
+    ax.plot(g["kfrac"], g["value"], marker="o",
+            label=f"{arch} L={layer + 1}")
+ax.set_xlabel("kfrac (top-K voxels by |∇H|)")
+ax.set_ylabel("per-frame fraction of mask voxels in GT region")
+ax.set_title("synth blob: spatial overlap with GT vs threshold")
+ax.legend(fontsize=8); ax.grid(alpha=0.3)
+
+# (3) Centroid trajectory: predicted vs GT for one config (DINO-v2 L=5)
+ax = fig.add_subplot(gs[1, 0])
+H_v = np.load(RESULTS / "synth_translating_blob" / "dinov2_b" / "H_video.npz")["H"]
+grad_v = grad_volume_magnitude(H_v, layer=5)
+mask = topk_mask(grad_v, 0.05)
+centroids = centroid_trajectory(grad_v, mask)
+gt_cx = GT["dinov2_b_cx_patch"].values
+gt_cy = GT["dinov2_b_cy_patch"].values
+ax.plot(gt_cx[:H_v.shape[0]], "k-", lw=1.6, label="GT cx (patch)")
+ax.plot(gt_cy[:H_v.shape[0]], "k--", lw=1.2, label="GT cy")
+ax.plot(centroids[:, 1], "tab:red", marker="o", ms=3, label="pred cx (centroid)")
+ax.plot(centroids[:, 0], "tab:blue", marker="o", ms=3, label="pred cy")
+ax.set_xlabel("frame"); ax.set_ylabel("patch coordinate")
+ax.set_title("DINO-v2 L=5 centroid trajectory vs GT  (synth blob)")
+ax.legend(fontsize=8, ncol=2); ax.grid(alpha=0.3)
+
+# (4) Centroid Pearson r per (arch, layer)
+ax = fig.add_subplot(gs[1, 1])
+pivot = df[df["metric"].str.startswith("centroid_pearson")].pivot_table(
+    index=["arch", "layer"], columns="metric", values="value"
+).round(3)
+# Bar chart: r_x and r_y per (arch, layer) row
+labels = [f"{a} L={l+1}" for (a, l) in pivot.index]
+x = np.arange(len(labels))
+ax.bar(x - 0.2, pivot["centroid_pearson_r_x"], width=0.4, label="r_x", color="tab:orange")
+ax.bar(x + 0.2, pivot["centroid_pearson_r_y"], width=0.4, label="r_y", color="tab:cyan")
+ax.set_xticks(x); ax.set_xticklabels(labels, rotation=20, fontsize=9)
+ax.set_ylabel("Pearson r")
+ax.set_ylim(-1.0, 1.0); ax.axhline(0, color="0.5", lw=0.6)
+ax.set_title("Centroid trajectory Pearson r vs GT  (synth blob, kfrac=0.05)")
+ax.legend(); ax.grid(alpha=0.3, axis="y")
+
+# (5) Real-clip edge fraction bar chart per (arch, layer, kfrac)
+ax = fig.add_subplot(gs[2, 0])
+edge = df[(df["metric"] == "edge_frac") & (df["video"] == "real_clip")]
+labels = [f"{r['arch']} L={r['layer']+1} k={r['kfrac']:.0%}"
+          for _, r in edge.iterrows()]
+ax.barh(np.arange(len(labels)), edge["value"].values,
+        color="tab:red", alpha=0.75)
+ax.set_yticks(np.arange(len(labels))); ax.set_yticklabels(labels, fontsize=8)
+ax.set_xlabel("fraction of mask voxels on frame edge")
+ax.set_title("real_clip: edge-fraction diagnostic (Darcet 2024 register-token)")
+ax.axvline(4 / 14 / 14 * 4 * 13, color="0.4", lw=0.8, ls="--",
+           label=f"chance ({(4 * 14 - 4) / (14 * 14):.0%} of patches are edge)")
+ax.legend(fontsize=8); ax.grid(alpha=0.3, axis="x")
+
+# (6) Real-clip thumbnail at frame 16 + DINO-v2 H@L6 side-by-side
+ax = fig.add_subplot(gs[2, 1])
+gif = Image.open(REPO / "results" / "video" / "real_clip" / "vit_b16" / "depth_x_time.gif")
+gif.seek(16)
+ax.imshow(gif)
+ax.set_title("real_clip frame 17  (input + H@L6 panel from depth_x_time.gif)")
+ax.set_xticks([]); ax.set_yticks([])
+
+fig.suptitle("Bundle / per-frame / centroid metrics — synth blob + real_clip diagnostics",
+             y=0.995)
+fig.savefig(RESULTS / "bundle_metrics_summary.png", dpi=160, bbox_inches="tight")
+plt.close(fig)
+print(f"saved {RESULTS / 'bundle_metrics_summary.png'}")
+
 # %%
 print("=== bundle IoU at top-20% voxels ===")
 print(df[(df["metric"] == "bundle_iou") & (df["kfrac"] == 0.20)]
