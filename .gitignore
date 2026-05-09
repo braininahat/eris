@@ -7,3 +7,6 @@ __pycache__/
 .DS_Store
 data/
 uv.lock
+
+# heavy intermediate caches (regenerable)
+results/umap_embeddings/*_residuals.npz

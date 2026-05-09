@@ -86,11 +86,68 @@ token dominance and shows modest content tracking (r_x = 0.40 at L=5).
 Figures: `video/{video}/{arch}/{depth_x_time.gif, layer_time_grid.png,
 transition_per_frame.png}`, `video/bundle_metrics_summary.png`.
 
-### 4. Estimator robustness: pending
+### 4. Estimator robustness: L4→L5 transition is not a Vasicek artefact
 
-Vasicek (scipy default) used throughout the above. k-NN (Kozachenko-
-Leonenko) and KDE estimators implemented but cross-validation of the L4→L5
-finding under each is in progress.
+ViT-B/16, same 200 tiny-imagenet val images, three estimators (Vasicek
+scipy default, k-NN Kozachenko-Leonenko k=3, KDE Gaussian kernel
+Silverman bandwidth):
+
+| estimator | median L_trans | IQR | within ±1 of Vasicek median |
+|---|---|---|---|
+| Vasicek | 5.0 | 0.0 | 100% |
+| k-NN | 5.0 | 0.0 | 100% |
+| KDE | 4.0 | 1.0 | 100% |
+
+ΔH-std peak/median on the body of the curve: Vasicek 9.3, k-NN 4.6,
+KDE 6.1 — all ≫ 2.0 sharpness threshold. Phase curves overlay near-
+identically on z-scored axes; the L=5 spike is the dominant feature
+under every estimator. Field-stack at L=6 on a single image: all three
+flag the *same* outlier patch cluster.
+
+Anomaly: KDE's median sits at L=4 vs L=5 for Vasicek/k-NN; still inside
+the ±1 envelope. KDE is ~5× slower than the others (52 min vs 4 min
+for k-NN on the same 200×12 forward set) — Gaussian KDE log-pdf is
+O(n²) in 768 samples.
+
+Figures: `estimator_robustness/{phase_curves.png,
+field_stack_compare.png, transition_layer_agreement.png}`,
+`estimator_robustness/agreement.csv`.
+
+### 5. The L4→L5 transition has a geometric correlate in residual space
+
+UMAP of per-patch raw residual vectors (768-D for ViT-B/16, 768-D for
+DINO-v2), pooled across 200 tiny-imagenet val images, at four layers
+per arch, two normalisations (raw / per-patch standardised). Coloured
+by per-patch H.
+
+ViT-B/16 — at L=1 the residual cloud is one cohesive blob with
+near-uniform H. At L=5 (transition) a discrete low-H cluster splinters
+from the bulk; the split persists through L=12. Quantitatively, low-H
+"outlier" patches (bottom 1% of H) sit at mean-50-NN distance 8–20×
+**tighter** to each other than the bulk under per-patch standardisation
+(ratio 0.05–0.12 at L=5/6/12, vs 0.62 at L=1). Under raw residuals the
+ratio inverts to >1 at deep layers because outlier-feature *magnitudes*
+spread them in raw L2 space — the geometric clustering is a
+distribution-shape effect that standardisation reveals.
+
+DINO-v2 — no comparable bifurcation. NN-distance ratios stay 0.31–0.95
+across all four layers, both normalisations. Low-H patches are present
+but diffuse, not clustered.
+
+Read: ViT-B/16's entropy phase transition has a clean geometric
+correlate (sparse non-Gaussian patches form a residual-space attractor);
+DINO-v2 doesn't. Consistent with the training-objective gating from
+Finding 1 — supervised classification produces sharp outlier-feature
+separation, SSL produces graded.
+
+Figures: `umap_embeddings/{vit_b16,dinov2_b}_umap_residuals.png`,
+`umap_embeddings/outlier_geometry.csv`.
+
+(The earlier `umap/whole_stack_umap.png` etc. that UMAP'd the *derived*
+1-D entropy field per patch shows at-chance class separation —
+expected, since collapsing 768-D → 1-D loses the geometry. The
+finding above lives in the raw residual stream, not its scalar
+projection.)
 
 ## What this is + isn't
 

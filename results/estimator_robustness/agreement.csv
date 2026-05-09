@@ -1,0 +1,4 @@
+estimator,median_L_trans,iqr,q25_L_trans,q75_L_trans,min_L_trans,max_L_trans,frac_within_1_of_vasicek_median,n_images
+vasicek,5.0,0.0,5.0,5.0,4,5,1.0,200
+knn,5.0,0.0,5.0,5.0,4,5,1.0,200
+kde,4.0,1.0,4.0,5.0,4,5,1.0,200
